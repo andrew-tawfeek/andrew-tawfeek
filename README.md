@@ -51,7 +51,7 @@ My current work focuses on applying advanced mathematical structures to improve 
 
 ## 🔗 Connect
 
-- [LinkedIn]([https://linkedin.com/in/yourprofile](https://www.linkedin.com/in/andrew-tawfeek/))
+- [LinkedIn](https://www.linkedin.com/in/andrew-tawfeek/)
 - [Google Scholar](https://scholar.google.com/citations?hl=en&user=Za4CG6sAAAAJ&view_op=list_works&authuser=1)
 - [Personal Website](https://www.atawfeek.com)
 
