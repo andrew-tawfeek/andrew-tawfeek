@@ -38,21 +38,12 @@ Algorithmic exploration of wild knot mosaics
 
 ### [Tropical Moduli Space Computation](https://github.com/andrew-tawfeek/tropicalmoduli)
 Algorithms for computing and visualizing cells within moduli spaces of tropical curves (Mg,n^trop)
-- Developed computational framework building on Chan's combinatorial approach to tropical Torelli map
+- Developed computational framework building on Chan's combinatorial approach to the tropical Torelli map
 - Implemented efficient algorithms for generating moduli space stratification
 - Applications to optimization landscapes in machine learning architecture design
 
-## 📝 Research Directions
-
-My current work focuses on applying advanced mathematical structures to improve AI architectures:
-- Persistent homology techniques for feature extraction in complex data
-- Tropical geometric approaches to neural network optimization
-- Topological data analysis for enhanced model interpretability
-
-## 🔗 Connect
+## Connect
 
 - [LinkedIn](https://www.linkedin.com/in/andrew-tawfeek/)
 - [Google Scholar](https://scholar.google.com/citations?hl=en&user=Za4CG6sAAAAJ&view_op=list_works&authuser=1)
 - [Personal Website](https://www.atawfeek.com)
-
-*Open to collaborative research opportunities at the intersection of computational mathematics and AI*
