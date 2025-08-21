@@ -10,19 +10,19 @@ My work bridges advanced mathematical theory with computational methods and AI a
 - **Tropical Geometry**: Developing algorithms for tropical moduli spaces with connections to optimization in deep learning
 - **Knot Theory**: Algorithmic approaches to wild knot classification and manipulation with ML techniques
 
-## 🧠 Core Mathematical Expertise
+## Coore Mathematical Expertise
 
 - **Tropical Geometry**: Moduli spaces, polyhedral geometry, matroid theory
 - **Discrete Mathematics**: Simplicial complexes, discrete Morse theory, combinatorial topology
 - **Knot Theory**: Wild knot mosaics, computational approaches to knot invariants
 
-## 💻 Technical Skills
+## Technical Skills
 
 - **Languages**: Python, SageMath, Mathematica, Macaulay2
 - **Frameworks**: NetworkX, Jupyter, Scientific Python stack
 - **Visualization**: Interactive mathematical and ML visualization techniques
 
-## 🔬 Featured Research Projects
+## Featured Research Projects
 
 ### [Discrete Gradient Vector Fields](https://github.com/andrew-tawfeek/discrete-gradients)
 Research on discrete Morse theory with applications to topological data analysis
