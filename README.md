@@ -2,7 +2,7 @@
 
 > Senior Research Scientist (AI) | Computational Topology & Geometry
 
-## 🔍 Research Focus
+## Research Focus
 
 My work bridges advanced mathematical theory with computational methods and AI applications:
 
@@ -10,7 +10,7 @@ My work bridges advanced mathematical theory with computational methods and AI a
 - **Tropical Geometry**: Developing algorithms for tropical moduli spaces with connections to optimization in deep learning
 - **Knot Theory**: Algorithmic approaches to wild knot classification and manipulation with ML techniques
 
-## Coore Mathematical Expertise
+## Core Mathematical Expertise
 
 - **Tropical Geometry**: Moduli spaces, polyhedral geometry, matroid theory
 - **Discrete Mathematics**: Simplicial complexes, discrete Morse theory, combinatorial topology
