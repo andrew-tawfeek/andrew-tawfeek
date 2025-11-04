@@ -79,19 +79,11 @@
         // HIGHLIGHTED SEGMENTS CONTROL
         // ============================================
         // Number of highlighted radial segments along the trefoil
-        const NUM_HIGHLIGHTED_SEGMENTS = 5;
+        const NUM_HIGHLIGHTED_SEGMENTS = 5; // #webpages
         // ============================================
         
         // Create highlighted segment rings
         const segmentRings = [];
-        const segmentMaterial = new THREE.MeshPhongMaterial({
-            color: 0xff00ff,
-            wireframe: true,
-            emissive: 0xff00ff,
-            emissiveIntensity: 0.5,
-            transparent: true,
-            opacity: 0.8
-        });
         
         for (let i = 0; i < NUM_HIGHLIGHTED_SEGMENTS; i++) {
             const t = i / NUM_HIGHLIGHTED_SEGMENTS;
@@ -99,7 +91,21 @@
             
             // Create a ring geometry at this position
             const ringGeometry = new THREE.TorusGeometry(0.3, 0.05, 8, 16);
-            const ring = new THREE.Mesh(ringGeometry, segmentMaterial.clone());
+            
+            // Create material for this ring (will be updated to contrast with main knot)
+            const ringMaterial = new THREE.MeshPhongMaterial({
+                color: 0xff00ff,
+                wireframe: true,
+                emissive: 0xff00ff,
+                emissiveIntensity: 0.3,
+                transparent: true,
+                opacity: 0.9
+            });
+            
+            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+            
+            // Store original positions for applying deformations
+            const ringOriginalPositions = ringGeometry.attributes.position.array.slice();
             
             // Position the ring
             ring.position.copy(position);
@@ -112,7 +118,10 @@
             scene.add(ring);
             segmentRings.push({
                 mesh: ring,
+                geometry: ringGeometry,
+                originalPositions: ringOriginalPositions,
                 t: t,
+                tubularIndex: Math.floor(t * TUBULAR_SEGMENTS),
                 hovered: false
             });
         }
@@ -240,46 +249,29 @@
                 // Reset all segments
                 segmentRings.forEach(segment => {
                     segment.hovered = false;
-                    segment.mesh.material.emissiveIntensity = 0.5;
-                    segment.mesh.material.opacity = 0.8;
+                    segment.mesh.material.emissiveIntensity = 0.3;
+                    segment.mesh.material.opacity = 0.9;
                     segment.mesh.scale.set(1, 1, 1);
                 });
                 
-                // Highlight hovered segment
+                // Highlight hovered segment with glow
                 if (intersects.length > 0) {
                     const hoveredMesh = intersects[0].object;
                     const segment = segmentRings.find(s => s.mesh === hoveredMesh);
                     if (segment) {
                         segment.hovered = true;
-                        segment.mesh.material.emissiveIntensity = 1.5;
+                        segment.mesh.material.emissiveIntensity = 2.0; // Strong glow
                         segment.mesh.material.opacity = 1.0;
-                        segment.mesh.scale.set(1.2, 1.2, 1.2);
+                        segment.mesh.scale.set(1.3, 1.3, 1.3);
                     }
                 }
             }
-            
-            // Update segment ring positions to follow the trefoil
-            segmentRings.forEach(segment => {
-                const position = trefoilKnot.getPoint(segment.t);
-                const tangent = trefoilKnot.getTangent(segment.t);
-                
-                // Apply the torus's world transformation
-                position.applyMatrix4(torus.matrixWorld);
-                
-                // Update position
-                segment.mesh.position.copy(position);
-                
-                // Update orientation to match the curve
-                const axis = new THREE.Vector3(0, 0, 1);
-                const rotatedTangent = tangent.clone().applyQuaternion(torus.quaternion);
-                segment.mesh.quaternion.setFromUnitVectors(axis, rotatedTangent.normalize());
-            });
             
             // Get position attribute
             const positions = torusGeometry.attributes.position;
             const vertex = new THREE.Vector3();
             
-            // Update each vertex
+            // First pass: Update main knot vertices
             for (let i = 0; i < positions.count; i++) {
                 const i3 = i * 3;
                 
@@ -358,6 +350,89 @@
             const hue = (time * 0.1) % 1;
             material.color.setHSL(hue, 1, 0.5);
             material.emissive.setHSL(hue, 1, 0.2);
+            
+            // Update segment rings with deformations and contrasting color
+            segmentRings.forEach(segment => {
+                // Calculate average position from the actual deformed knot vertices
+                // Get the ring of vertices at this tubular segment
+                const tubularIndex = segment.tubularIndex;
+                const verticesPerSegment = RADIAL_SEGMENTS + 1;
+                
+                // Calculate center position from deformed vertices
+                let centerX = 0, centerY = 0, centerZ = 0;
+                for (let r = 0; r < RADIAL_SEGMENTS; r++) {
+                    const vertexIndex = tubularIndex * verticesPerSegment + r;
+                    const i3 = vertexIndex * 3;
+                    
+                    if (i3 < positions.count * 3) {
+                        centerX += positions.array[i3];
+                        centerY += positions.array[i3 + 1];
+                        centerZ += positions.array[i3 + 2];
+                    }
+                }
+                centerX /= RADIAL_SEGMENTS;
+                centerY /= RADIAL_SEGMENTS;
+                centerZ /= RADIAL_SEGMENTS;
+                
+                // Update ring position to match deformed center
+                const deformedCenter = new THREE.Vector3(centerX, centerY, centerZ);
+                deformedCenter.applyMatrix4(torus.matrixWorld);
+                segment.mesh.position.copy(deformedCenter);
+                
+                // Update orientation to match the curve
+                const tangent = trefoilKnot.getTangent(segment.t);
+                const axis = new THREE.Vector3(0, 0, 1);
+                const rotatedTangent = tangent.clone().applyQuaternion(torus.quaternion);
+                segment.mesh.quaternion.setFromUnitVectors(axis, rotatedTangent.normalize());
+                
+                // Set contrasting color (opposite hue)
+                const contrastHue = (hue + 0.5) % 1;
+                segment.mesh.material.color.setHSL(contrastHue, 1, 0.5);
+                segment.mesh.material.emissive.setHSL(contrastHue, 1, segment.hovered ? 0.8 : 0.2);
+                
+                // Apply deformations from the main knot to the ring vertices
+                const ringPositions = segment.geometry.attributes.position;
+                const ringVertex = new THREE.Vector3();
+                
+                for (let i = 0; i < ringPositions.count; i++) {
+                    const i3 = i * 3;
+                    
+                    // Start with original ring vertex
+                    const originalRingVertex = new THREE.Vector3(
+                        segment.originalPositions[i3],
+                        segment.originalPositions[i3 + 1],
+                        segment.originalPositions[i3 + 2]
+                    );
+                    
+                    // Sample turbulence at this position (transformed to world space)
+                    const worldPos = originalRingVertex.clone()
+                        .applyMatrix4(segment.mesh.matrixWorld);
+                    
+                    const turbulence = 
+                        Math.sin(worldPos.x * turbulenceScale + time * turbulenceSpeed) * 
+                        Math.cos(worldPos.y * turbulenceScale + time * turbulenceSpeed * 0.7) * 
+                        Math.sin(worldPos.z * turbulenceScale + time * turbulenceSpeed * 0.5);
+                    
+                    const displacement = originalRingVertex.clone().normalize()
+                        .multiplyScalar(turbulence * turbulenceAmplitude);
+                    ringVertex.copy(originalRingVertex).add(displacement);
+                    
+                    // Apply Brownian motion proportional to the main knot
+                    if (BROWNIAN_INTENSITY > 0) {
+                        const brownianScale = 0.5; // Rings have less Brownian than main knot
+                        ringVertex.x += (Math.random() - 0.5) * BROWNIAN_INTENSITY * brownianScale;
+                        ringVertex.y += (Math.random() - 0.5) * BROWNIAN_INTENSITY * brownianScale;
+                        ringVertex.z += (Math.random() - 0.5) * BROWNIAN_INTENSITY * brownianScale;
+                    }
+                    
+                    // Update ring vertex position
+                    ringPositions.array[i3] = ringVertex.x;
+                    ringPositions.array[i3 + 1] = ringVertex.y;
+                    ringPositions.array[i3 + 2] = ringVertex.z;
+                }
+                
+                ringPositions.needsUpdate = true;
+            });
             
             renderer.render(scene, camera);
         }
