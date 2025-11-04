@@ -45,7 +45,7 @@
         // ============================================
         // Adjust these to control mesh detail
         // Higher values = more triangles = smoother surface
-        const RADIAL_SEGMENTS = 32;  // Segments around the tube
+        const RADIAL_SEGMENTS = 22;  // Segments around the tube
         const TUBULAR_SEGMENTS = 64; // Segments around the main ring
         // ============================================
         
@@ -74,6 +74,48 @@
         
         const torus = new THREE.Mesh(torusGeometry, material);
         scene.add(torus);
+        
+        // ============================================
+        // HIGHLIGHTED SEGMENTS CONTROL
+        // ============================================
+        // Number of highlighted radial segments along the trefoil
+        const NUM_HIGHLIGHTED_SEGMENTS = 5;
+        // ============================================
+        
+        // Create highlighted segment rings
+        const segmentRings = [];
+        const segmentMaterial = new THREE.MeshPhongMaterial({
+            color: 0xff00ff,
+            wireframe: true,
+            emissive: 0xff00ff,
+            emissiveIntensity: 0.5,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        for (let i = 0; i < NUM_HIGHLIGHTED_SEGMENTS; i++) {
+            const t = i / NUM_HIGHLIGHTED_SEGMENTS;
+            const position = trefoilKnot.getPoint(t);
+            
+            // Create a ring geometry at this position
+            const ringGeometry = new THREE.TorusGeometry(0.3, 0.05, 8, 16);
+            const ring = new THREE.Mesh(ringGeometry, segmentMaterial.clone());
+            
+            // Position the ring
+            ring.position.copy(position);
+            
+            // Orient the ring to be perpendicular to the curve
+            const tangent = trefoilKnot.getTangent(t);
+            const axis = new THREE.Vector3(0, 0, 1);
+            ring.quaternion.setFromUnitVectors(axis, tangent.normalize());
+            
+            scene.add(ring);
+            segmentRings.push({
+                mesh: ring,
+                t: t,
+                hovered: false
+            });
+        }
         
         // Add lighting
         const ambientLight = new THREE.AmbientLight(0x404040, 2);
@@ -172,7 +214,7 @@
         // Adjust this value to control random surface motion
         // Higher values = more jittery, nervous motion
         // Set to 0 to disable Brownian motion
-        const BROWNIAN_INTENSITY = 0.04;
+        const BROWNIAN_INTENSITY = 0.01;
         // ============================================
         
         // Brownian motion state (random walk for each vertex)
@@ -189,6 +231,49 @@
                 torus.rotation.x += 0.003;
                 torus.rotation.y += 0.005;
             }
+            
+            // Check for segment hover (only when not dragging)
+            if (!isDragging && isMouseActive) {
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(segmentRings.map(s => s.mesh));
+                
+                // Reset all segments
+                segmentRings.forEach(segment => {
+                    segment.hovered = false;
+                    segment.mesh.material.emissiveIntensity = 0.5;
+                    segment.mesh.material.opacity = 0.8;
+                    segment.mesh.scale.set(1, 1, 1);
+                });
+                
+                // Highlight hovered segment
+                if (intersects.length > 0) {
+                    const hoveredMesh = intersects[0].object;
+                    const segment = segmentRings.find(s => s.mesh === hoveredMesh);
+                    if (segment) {
+                        segment.hovered = true;
+                        segment.mesh.material.emissiveIntensity = 1.5;
+                        segment.mesh.material.opacity = 1.0;
+                        segment.mesh.scale.set(1.2, 1.2, 1.2);
+                    }
+                }
+            }
+            
+            // Update segment ring positions to follow the trefoil
+            segmentRings.forEach(segment => {
+                const position = trefoilKnot.getPoint(segment.t);
+                const tangent = trefoilKnot.getTangent(segment.t);
+                
+                // Apply the torus's world transformation
+                position.applyMatrix4(torus.matrixWorld);
+                
+                // Update position
+                segment.mesh.position.copy(position);
+                
+                // Update orientation to match the curve
+                const axis = new THREE.Vector3(0, 0, 1);
+                const rotatedTangent = tangent.clone().applyQuaternion(torus.quaternion);
+                segment.mesh.quaternion.setFromUnitVectors(axis, rotatedTangent.normalize());
+            });
             
             // Get position attribute
             const positions = torusGeometry.attributes.position;
