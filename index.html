@@ -104,6 +104,18 @@
             
             const ring = new THREE.Mesh(ringGeometry, ringMaterial);
             
+            // Create invisible larger hitbox for easier mouse interaction
+            const hitboxGeometry = new THREE.TorusGeometry(0.3, 0.25, 8, 16); // Larger radius
+            const hitboxMaterial = new THREE.MeshBasicMaterial({
+                transparent: true,
+                opacity: 0,
+                visible: false
+            });
+            const hitbox = new THREE.Mesh(hitboxGeometry, hitboxMaterial);
+            hitbox.position.copy(position);
+            hitbox.quaternion.copy(ring.quaternion);
+            scene.add(hitbox);
+            
             // Store original positions for applying deformations
             const ringOriginalPositions = ringGeometry.attributes.position.array.slice();
             
@@ -118,6 +130,7 @@
             scene.add(ring);
             segmentRings.push({
                 mesh: ring,
+                hitbox: hitbox,
                 geometry: ringGeometry,
                 originalPositions: ringOriginalPositions,
                 t: t,
@@ -244,7 +257,8 @@
             // Check for segment hover (only when not dragging)
             if (!isDragging && isMouseActive) {
                 raycaster.setFromCamera(mouse, camera);
-                const intersects = raycaster.intersectObjects(segmentRings.map(s => s.mesh));
+                // Use hitboxes for easier interaction
+                const intersects = raycaster.intersectObjects(segmentRings.map(s => s.hitbox));
                 
                 // Reset all segments
                 segmentRings.forEach(segment => {
@@ -256,8 +270,8 @@
                 
                 // Highlight hovered segment with glow
                 if (intersects.length > 0) {
-                    const hoveredMesh = intersects[0].object;
-                    const segment = segmentRings.find(s => s.mesh === hoveredMesh);
+                    const hoveredHitbox = intersects[0].object;
+                    const segment = segmentRings.find(s => s.hitbox === hoveredHitbox);
                     if (segment) {
                         segment.hovered = true;
                         segment.mesh.material.emissiveIntensity = 2.0; // Strong glow
@@ -379,11 +393,17 @@
                 deformedCenter.applyMatrix4(torus.matrixWorld);
                 segment.mesh.position.copy(deformedCenter);
                 
+                // Update hitbox position to match ring
+                segment.hitbox.position.copy(deformedCenter);
+                
                 // Update orientation to match the curve
                 const tangent = trefoilKnot.getTangent(segment.t);
                 const axis = new THREE.Vector3(0, 0, 1);
                 const rotatedTangent = tangent.clone().applyQuaternion(torus.quaternion);
                 segment.mesh.quaternion.setFromUnitVectors(axis, rotatedTangent.normalize());
+                
+                // Update hitbox orientation to match ring
+                segment.hitbox.quaternion.copy(segment.mesh.quaternion);
                 
                 // Set contrasting color (opposite hue)
                 const contrastHue = (hue + 0.5) % 1;
