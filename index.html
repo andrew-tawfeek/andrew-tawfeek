@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Intentionality - Triangulated Torus (Fixed)</title>
     <style>
         body {
@@ -10,10 +10,14 @@
             overflow: hidden;
             background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
             font-family: 'Arial', sans-serif;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
         canvas {
             display: block;
             cursor: crosshair;
+            touch-action: none;
         }
         #info {
             position: absolute;
@@ -22,6 +26,14 @@
             color: rgba(255, 255, 255, 0.7);
             font-size: 14px;
             pointer-events: none;
+        }
+        
+        @media (max-width: 768px) {
+            #info {
+                font-size: 12px;
+                top: 10px;
+                left: 10px;
+            }
         }
     </style>
 </head>
@@ -225,6 +237,24 @@
         // Window state
         let windowElement = null;
         
+        // Touch state
+        let touchStartTime = 0;
+        let touchMoved = false;
+        
+        // Helper function to get pointer position
+        function getPointerPosition(event) {
+            if (event.touches && event.touches.length > 0) {
+                return {
+                    x: event.touches[0].clientX,
+                    y: event.touches[0].clientY
+                };
+            }
+            return {
+                x: event.clientX,
+                y: event.clientY
+            };
+        }
+        
         // Mouse down - start dragging
         document.addEventListener('mousedown', (event) => {
             isDragging = true;
@@ -233,6 +263,24 @@
                 y: event.clientY
             };
         });
+        
+        // Touch start - start dragging
+        document.addEventListener('touchstart', (event) => {
+            event.preventDefault();
+            isDragging = true;
+            touchStartTime = Date.now();
+            touchMoved = false;
+            const touch = event.touches[0];
+            previousMousePosition = {
+                x: touch.clientX,
+                y: touch.clientY
+            };
+            
+            // Update mouse position for raycasting
+            mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+            isMouseActive = true;
+        }, { passive: false });
         
         // Mouse up - stop dragging (or handle click on segment)
         document.addEventListener('mouseup', (event) => {
@@ -254,6 +302,29 @@
                 }
             }
         });
+        
+        // Touch end - stop dragging (or handle tap on segment)
+        document.addEventListener('touchend', (event) => {
+            event.preventDefault();
+            if (!isDragging) return;
+            
+            const touchDuration = Date.now() - touchStartTime;
+            
+            isDragging = false;
+            
+            // Check if this was a tap (not a drag) on a segment
+            if (!touchMoved && touchDuration < 300 && !windowElement) {
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(segmentRings.map(s => s.hitbox));
+                
+                if (intersects.length > 0) {
+                    // Tapped on a segment - show webpage immediately
+                    createContentWindow();
+                }
+            }
+            
+            isMouseActive = false;
+        }, { passive: false });
         
         // Track mouse movement
         document.addEventListener('mousemove', (event) => {
@@ -285,6 +356,39 @@
             );
         });
         
+        // Track touch movement
+        document.addEventListener('touchmove', (event) => {
+            event.preventDefault();
+            const touch = event.touches[0];
+            mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+            isMouseActive = true;
+            
+            // Handle rotation when dragging
+            if (isDragging) {
+                touchMoved = true;
+                manualRotation = true;
+                
+                const deltaX = touch.clientX - previousMousePosition.x;
+                const deltaY = touch.clientY - previousMousePosition.y;
+                
+                torus.rotation.y += deltaX * 0.01;
+                torus.rotation.x += deltaY * 0.01;
+                
+                previousMousePosition = {
+                    x: touch.clientX,
+                    y: touch.clientY
+                };
+            }
+            
+            // Project touch position into 3D space
+            raycaster.setFromCamera(mouse, camera);
+            const distance = 5;
+            mousePosition3D = raycaster.ray.origin.clone().add(
+                raycaster.ray.direction.multiplyScalar(distance)
+            );
+        }, { passive: false });
+        
         document.addEventListener('mouseleave', () => {
             isMouseActive = false;
         });
@@ -303,10 +407,18 @@
             windowElement.style.left = '50%';
             windowElement.style.top = '50%';
             windowElement.style.transform = 'translate(-50%, -50%) scale(0)';
-            windowElement.style.width = '80%';
-            windowElement.style.height = '80%';
-            windowElement.style.maxWidth = '1200px';
-            windowElement.style.maxHeight = '800px';
+            
+            // Mobile-responsive sizing
+            if (window.innerWidth <= 768) {
+                windowElement.style.width = '95%';
+                windowElement.style.height = '90%';
+            } else {
+                windowElement.style.width = '80%';
+                windowElement.style.height = '80%';
+                windowElement.style.maxWidth = '1200px';
+                windowElement.style.maxHeight = '800px';
+            }
+            
             windowElement.style.backgroundColor = 'rgba(20, 20, 40, 0.95)';
             windowElement.style.border = '2px solid rgba(255, 255, 255, 0.3)';
             windowElement.style.borderRadius = '10px';
@@ -321,12 +433,12 @@
             closeButton.style.position = 'absolute';
             closeButton.style.top = '10px';
             closeButton.style.right = '10px';
-            closeButton.style.width = '30px';
-            closeButton.style.height = '30px';
+            closeButton.style.width = window.innerWidth <= 768 ? '40px' : '30px';
+            closeButton.style.height = window.innerWidth <= 768 ? '40px' : '30px';
             closeButton.style.border = 'none';
             closeButton.style.backgroundColor = 'rgba(255, 50, 50, 0.8)';
             closeButton.style.color = 'white';
-            closeButton.style.fontSize = '20px';
+            closeButton.style.fontSize = window.innerWidth <= 768 ? '24px' : '20px';
             closeButton.style.cursor = 'pointer';
             closeButton.style.borderRadius = '5px';
             closeButton.style.zIndex = '1001';
@@ -582,6 +694,19 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            
+            // Update window size if open
+            if (windowElement) {
+                if (window.innerWidth <= 768) {
+                    windowElement.style.width = '95%';
+                    windowElement.style.height = '90%';
+                } else {
+                    windowElement.style.width = '80%';
+                    windowElement.style.height = '80%';
+                    windowElement.style.maxWidth = '1200px';
+                    windowElement.style.maxHeight = '800px';
+                }
+            }
         });
         
         // Start animation
