@@ -45,12 +45,21 @@
         // ============================================
         // Adjust these to control mesh detail
         // Higher values = more triangles = smoother surface
-        const RADIAL_SEGMENTS = 25;  // Segments around the tube
-        const TUBULAR_SEGMENTS = 32; // Segments around the main ring
+        const RADIAL_SEGMENTS = 32;  // Segments around the tube
+        const TUBULAR_SEGMENTS = 64; // Segments around the main ring
         // ============================================
         
-        // Create triangulated torus geometry
-        const torusGeometry = new THREE.TorusGeometry(1.5, 0.6, RADIAL_SEGMENTS, TUBULAR_SEGMENTS);
+        // Create trefoil knot geometry
+        const trefoilKnot = new THREE.Curve();
+        trefoilKnot.getPoint = function(t) {
+            t = t * Math.PI * 2;
+            const x = Math.sin(t) + 2 * Math.sin(2 * t);
+            const y = Math.cos(t) - 2 * Math.cos(2 * t);
+            const z = -Math.sin(3 * t);
+            return new THREE.Vector3(x, y, z).multiplyScalar(0.8);
+        };
+        
+        const torusGeometry = new THREE.TubeGeometry(trefoilKnot, TUBULAR_SEGMENTS, 0.3, RADIAL_SEGMENTS, true);
         
         // Store original positions for resetting
         const originalPositions = torusGeometry.attributes.position.array.slice();
@@ -129,8 +138,8 @@
             time += 0.01;
             
             // Rotate torus gently (commented out to keep torus fixed)
-            // torus.rotation.x += 0.003;
-            // torus.rotation.y += 0.005;
+             torus.rotation.x += 0.003;
+             torus.rotation.y += 0.005;
             
             // Get position attribute
             const positions = torusGeometry.attributes.position;
