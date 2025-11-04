@@ -479,7 +479,9 @@
         // Higher values = stronger attraction (try values between 0.05 and 0.5)
         // Lower values = weaker attraction
         // Set to 0 to disable mouse attraction
-        const GRAVITATIONAL_STRENGTH = 0.25;
+        // Automatically disabled on mobile devices for better performance
+        const isMobileDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        const GRAVITATIONAL_STRENGTH = isMobileDevice ? 0 : 0.25;
         // ============================================
         
         // Animation variables
