@@ -442,7 +442,17 @@
             closeButton.style.cursor = 'pointer';
             closeButton.style.borderRadius = '5px';
             closeButton.style.zIndex = '1001';
-            closeButton.onclick = () => closeContentWindow();
+            closeButton.style.pointerEvents = 'auto';
+            
+            // Add both click and touch handlers for cross-device compatibility
+            const closeWindow = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                closeContentWindow();
+            };
+            
+            closeButton.onclick = closeWindow;
+            closeButton.addEventListener('touchend', closeWindow, { passive: false });
             
             // Iframe
             const iframe = document.createElement('iframe');
