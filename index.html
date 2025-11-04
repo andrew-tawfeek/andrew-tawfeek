@@ -93,11 +93,46 @@
         let mousePosition3D = new THREE.Vector3();
         let isMouseActive = false;
         
+        // Rotation controls
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let manualRotation = false;
+        
+        // Mouse down - start dragging
+        document.addEventListener('mousedown', (event) => {
+            isDragging = true;
+            previousMousePosition = {
+                x: event.clientX,
+                y: event.clientY
+            };
+        });
+        
+        // Mouse up - stop dragging
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+        
         // Track mouse movement
         document.addEventListener('mousemove', (event) => {
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
             isMouseActive = true;
+            
+            // Handle rotation when dragging
+            if (isDragging) {
+                manualRotation = true;
+                
+                const deltaX = event.clientX - previousMousePosition.x;
+                const deltaY = event.clientY - previousMousePosition.y;
+                
+                torus.rotation.y += deltaX * 0.01;
+                torus.rotation.x += deltaY * 0.01;
+                
+                previousMousePosition = {
+                    x: event.clientX,
+                    y: event.clientY
+                };
+            }
             
             // Project mouse position into 3D space
             raycaster.setFromCamera(mouse, camera);
@@ -128,8 +163,20 @@
         
         // Turbulence animation settings
         const turbulenceSpeed = 1;      // Speed of turbulence animation
-        const turbulenceScale = 1;      // Scale of turbulence patterns
+        const turbulenceScale = 0.5;      // Scale of turbulence patterns
         const turbulenceAmplitude = 0.1; // Intensity of turbulence (very subtle)
+        
+        // ============================================
+        // BROWNIAN MOTION CONTROL
+        // ============================================
+        // Adjust this value to control random surface motion
+        // Higher values = more jittery, nervous motion
+        // Set to 0 to disable Brownian motion
+        const BROWNIAN_INTENSITY = 0.04;
+        // ============================================
+        
+        // Brownian motion state (random walk for each vertex)
+        const brownianOffsets = new Float32Array(torusGeometry.attributes.position.count * 3);
         
         // Animation loop
         function animate() {
@@ -137,9 +184,11 @@
             
             time += 0.01;
             
-            // Rotate torus gently (commented out to keep torus fixed)
-             torus.rotation.x += 0.003;
-             torus.rotation.y += 0.005;
+            // Auto-rotate only if not manually rotated
+            if (!manualRotation) {
+                torus.rotation.x += 0.003;
+                torus.rotation.y += 0.005;
+            }
             
             // Get position attribute
             const positions = torusGeometry.attributes.position;
@@ -166,6 +215,25 @@
                 // Apply turbulence as small radial displacement
                 const displacement = originalVertex.clone().normalize().multiplyScalar(turbulence * turbulenceAmplitude);
                 vertex.copy(originalVertex).add(displacement);
+                
+                // Apply Brownian motion (random walk)
+                if (BROWNIAN_INTENSITY > 0) {
+                    // Update Brownian offsets with random walk (small random steps)
+                    brownianOffsets[i3] += (Math.random() - 0.5) * BROWNIAN_INTENSITY;
+                    brownianOffsets[i3 + 1] += (Math.random() - 0.5) * BROWNIAN_INTENSITY;
+                    brownianOffsets[i3 + 2] += (Math.random() - 0.5) * BROWNIAN_INTENSITY;
+                    
+                    // Apply damping to prevent offsets from growing too large
+                    const damping = 0.95;
+                    brownianOffsets[i3] *= damping;
+                    brownianOffsets[i3 + 1] *= damping;
+                    brownianOffsets[i3 + 2] *= damping;
+                    
+                    // Add Brownian offsets to vertex position
+                    vertex.x += brownianOffsets[i3];
+                    vertex.y += brownianOffsets[i3 + 1];
+                    vertex.z += brownianOffsets[i3 + 2];
+                }
                 
                 // Gravitational pull towards mouse
                 if (isMouseActive) {
