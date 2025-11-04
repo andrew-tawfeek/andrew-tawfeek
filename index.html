@@ -35,10 +35,61 @@
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0x0a0a0a, 1);
+        renderer.setClearColor(0x000000, 1);
         document.body.appendChild(renderer.domElement);
         
         camera.position.z = 5;
+        
+        // ============================================
+        // CREATE SPACE SKYBOX
+        // ============================================
+        const skyboxGeometry = new THREE.SphereGeometry(500, 64, 64);
+        
+        // Create starfield texture using canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = 2048;
+        canvas.height = 2048;
+        const ctx = canvas.getContext('2d');
+        
+        // Black background
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Generate stars
+        for (let i = 0; i < 3000; i++) {
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            const radius = Math.random() * 1.5;
+            const opacity = Math.random() * 0.5 + 0.5;
+            
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+            ctx.fill();
+        }
+        
+        // Add some colored stars (nebula effect)
+        for (let i = 0; i < 200; i++) {
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            const radius = Math.random() * 2 + 1;
+            const hue = Math.random() * 360;
+            
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = `hsla(${hue}, 100%, 70%, 0.6)`;
+            ctx.fill();
+        }
+        
+        const skyboxTexture = new THREE.CanvasTexture(canvas);
+        const skyboxMaterial = new THREE.MeshBasicMaterial({
+            map: skyboxTexture,
+            side: THREE.BackSide
+        });
+        
+        const skybox = new THREE.Mesh(skyboxGeometry, skyboxMaterial);
+        scene.add(skybox);
+        // ============================================
         
         // ============================================
         // TRIANGULATION DENSITY CONTROL
@@ -306,7 +357,7 @@
         // Higher values = stronger attraction (try values between 0.05 and 0.5)
         // Lower values = weaker attraction
         // Set to 0 to disable mouse attraction
-        const GRAVITATIONAL_STRENGTH = 0.2;
+        const GRAVITATIONAL_STRENGTH = 0.25;
         // ============================================
         
         // Animation variables
@@ -324,7 +375,7 @@
         // Adjust this value to control random surface motion
         // Higher values = more jittery, nervous motion
         // Set to 0 to disable Brownian motion
-        const BROWNIAN_INTENSITY = 0.02;
+        const BROWNIAN_INTENSITY = 0.005;
         // ============================================
         
         // Brownian motion state
@@ -338,8 +389,14 @@
             
             // Auto-rotate only if not manually rotated
             if (!manualRotation) {
-                torus.rotation.x += 0.003;
-                torus.rotation.y += 0.005;
+                torus.rotation.x += 0.001;
+                torus.rotation.y += 0.002;
+                
+                // Skybox rotates with the trefoil (same coordinate system)
+                skybox.rotation.copy(torus.rotation);
+            } else {
+                // When manually rotating, skybox follows trefoil
+                skybox.rotation.copy(torus.rotation);
             }
             
             // Check for segment hover (only when not dragging and no window open)
