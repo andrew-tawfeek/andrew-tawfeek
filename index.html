@@ -114,7 +114,7 @@
             const ring = new THREE.Mesh(ringGeometry, ringMaterial);
             
             // Create invisible larger hitbox for easier mouse interaction
-            const hitboxGeometry = new THREE.TorusGeometry(0.3, 0.25, 8, 16); // Larger radius
+            const hitboxGeometry = new THREE.TorusGeometry(0.3, 0.25, 8, 16);
             const hitboxMaterial = new THREE.MeshBasicMaterial({
                 transparent: true,
                 opacity: 0,
@@ -171,11 +171,7 @@
         let previousMousePosition = { x: 0, y: 0 };
         let manualRotation = false;
         
-        // Animation state management
-        let isTransitioning = false;
-        let isTorus = false;
-        let transitionProgress = 0;
-        let clickedSegmentIndex = -1;
+        // Window state
         let windowElement = null;
         
         // Mouse down - start dragging
@@ -197,20 +193,13 @@
             isDragging = false;
             
             // Check if this was a click (not a drag) on a segment
-            if (!wasDragging && !isTransitioning) {
+            if (!wasDragging && !windowElement) {
                 raycaster.setFromCamera(mouse, camera);
                 const intersects = raycaster.intersectObjects(segmentRings.map(s => s.hitbox));
                 
                 if (intersects.length > 0) {
-                    const hoveredHitbox = intersects[0].object;
-                    const segmentIndex = segmentRings.findIndex(s => s.hitbox === hoveredHitbox);
-                    
-                    if (segmentIndex !== -1) {
-                        // Clicked on a segment!
-                        if (!isTorus) {
-                            startTrefoilToTorusTransition(segmentIndex);
-                        }
-                    }
+                    // Clicked on a segment - show webpage immediately
+                    createContentWindow();
                 }
             }
         });
@@ -239,7 +228,7 @@
             
             // Project mouse position into 3D space
             raycaster.setFromCamera(mouse, camera);
-            const distance = 5; // Distance from camera
+            const distance = 5;
             mousePosition3D = raycaster.ray.origin.clone().add(
                 raycaster.ray.direction.multiplyScalar(distance)
             );
@@ -249,111 +238,11 @@
             isMouseActive = false;
         });
         
-        // ============================================
-        // FIXED TRANSITION FUNCTIONS
-        // ============================================
-        
-        // Helper: Get trefoil knot point at parameter t (0 to 1)
-        function getTrefoilPoint(t) {
-            const angle = t * Math.PI * 2;
-            return {
-                x: (Math.sin(angle) + 2 * Math.sin(2 * angle)) * 0.8,
-                y: (Math.cos(angle) - 2 * Math.cos(2 * angle)) * 0.8,
-                z: -Math.sin(3 * angle) * 0.8
-            };
-        }
-        
-        // Helper: Get torus point at parameters (u, v)
-        function getTorusPoint(u, v, majorRadius = 1.5, minorRadius = 0.3) {
-            const angle = u * Math.PI * 2;
-            const tubeAngle = v * Math.PI * 2;
-            
-            return {
-                x: (majorRadius + minorRadius * Math.cos(tubeAngle)) * Math.cos(angle),
-                y: (majorRadius + minorRadius * Math.cos(tubeAngle)) * Math.sin(angle),
-                z: minorRadius * Math.sin(tubeAngle)
-            };
-        }
-        
-        // Helper: Calculate smooth easing
-        function smoothstep(x) {
-            return x * x * (3 - 2 * x);
-        }
-        
-        // Helper: Calculate frame vectors for a curve point
-        function calculateFrame(centerPoint, nextPoint) {
-            // Calculate tangent
-            const tangent = {
-                x: nextPoint.x - centerPoint.x,
-                y: nextPoint.y - centerPoint.y,
-                z: nextPoint.z - centerPoint.z
-            };
-            
-            const length = Math.sqrt(tangent.x * tangent.x + tangent.y * tangent.y + tangent.z * tangent.z);
-            if (length > 0.0001) {
-                tangent.x /= length;
-                tangent.y /= length;
-                tangent.z /= length;
-            }
-            
-            // Choose an up vector that's not parallel to tangent
-            let up = { x: 0, y: 1, z: 0 };
-            if (Math.abs(tangent.y) > 0.9) {
-                up = { x: 1, y: 0, z: 0 };
-            }
-            
-            // Calculate binormal via cross product
-            const binormal = {
-                x: tangent.y * up.z - tangent.z * up.y,
-                y: tangent.z * up.x - tangent.x * up.z,
-                z: tangent.x * up.y - tangent.y * up.x
-            };
-            
-            const bLength = Math.sqrt(binormal.x * binormal.x + binormal.y * binormal.y + binormal.z * binormal.z);
-            if (bLength > 0.0001) {
-                binormal.x /= bLength;
-                binormal.y /= bLength;
-                binormal.z /= bLength;
-            }
-            
-            // Calculate normal via cross product of binormal and tangent
-            const normal = {
-                x: binormal.y * tangent.z - binormal.z * tangent.y,
-                y: binormal.z * tangent.x - binormal.x * tangent.z,
-                z: binormal.x * tangent.y - binormal.y * tangent.x
-            };
-            
-            return { normal, binormal, tangent };
-        }
-        
-        function startTrefoilToTorusTransition(segmentIndex) {
-            isTransitioning = true;
-            clickedSegmentIndex = segmentIndex;
-            transitionProgress = 0;
-            
-            // Hide all rings
-            segmentRings.forEach(segment => {
-                segment.mesh.visible = false;
-                segment.hitbox.visible = false;
-            });
-        }
-        
-        function startTorusToTrefoilTransition() {
+        function closeContentWindow() {
             if (windowElement) {
                 document.body.removeChild(windowElement);
                 windowElement = null;
             }
-            
-            // Immediately return to trefoil state
-            isTransitioning = false;
-            isTorus = false;
-            transitionProgress = 0;
-            
-            // Show all rings again immediately
-            segmentRings.forEach(segment => {
-                segment.mesh.visible = true;
-                segment.hitbox.visible = true;
-            });
         }
         
         function createContentWindow() {
@@ -390,7 +279,7 @@
             closeButton.style.cursor = 'pointer';
             closeButton.style.borderRadius = '5px';
             closeButton.style.zIndex = '1001';
-            closeButton.onclick = () => startTorusToTrefoilTransition();
+            closeButton.onclick = () => closeContentWindow();
             
             // Iframe
             const iframe = document.createElement('iframe');
@@ -423,12 +312,11 @@
         // Animation variables
         let time = 0;
         const gravitationalRadius = 5;
-        const returnSpeed = 0.001;
         
         // Turbulence animation settings
-        const turbulenceSpeed = 1;      // Speed of turbulence animation
-        const turbulenceScale = 0.5;      // Scale of turbulence patterns
-        const turbulenceAmplitude = 0.1; // Intensity of turbulence (very subtle)
+        const turbulenceSpeed = 1;
+        const turbulenceScale = 0.5;
+        const turbulenceAmplitude = 0.1;
         
         // ============================================
         // BROWNIAN MOTION CONTROL
@@ -436,10 +324,10 @@
         // Adjust this value to control random surface motion
         // Higher values = more jittery, nervous motion
         // Set to 0 to disable Brownian motion
-        const BROWNIAN_INTENSITY = 0.01;
+        const BROWNIAN_INTENSITY = 0.02;
         // ============================================
         
-        // Brownian motion state (random walk for each vertex)
+        // Brownian motion state
         const brownianOffsets = new Float32Array(torusGeometry.attributes.position.count * 3);
         
         // Animation loop
@@ -448,29 +336,15 @@
             
             time += 0.01;
             
-            // Handle transition animation
-            if (isTransitioning) {
-                transitionProgress += TRANSITION_SPEED;
-                
-                // Only Trefoil to Torus transition (reverse happens instantly)
-                if (transitionProgress >= 1.5) {
-                    // Transition complete
-                    isTransitioning = false;
-                    isTorus = true;
-                    createContentWindow();
-                }
-            }
-            
             // Auto-rotate only if not manually rotated
             if (!manualRotation) {
                 torus.rotation.x += 0.003;
                 torus.rotation.y += 0.005;
             }
             
-            // Check for segment hover (only when not dragging and not transitioning)
-            if (!isDragging && isMouseActive && !isTransitioning && !isTorus) {
+            // Check for segment hover (only when not dragging and no window open)
+            if (!isDragging && isMouseActive && !windowElement) {
                 raycaster.setFromCamera(mouse, camera);
-                // Use hitboxes for easier interaction
                 const intersects = raycaster.intersectObjects(segmentRings.map(s => s.hitbox));
                 
                 // Reset all segments
@@ -480,13 +354,13 @@
                     segment.mesh.material.opacity = 0.9;
                 });
                 
-                // Highlight hovered segment with glow (no scale change)
+                // Highlight hovered segment
                 if (intersects.length > 0) {
                     const hoveredHitbox = intersects[0].object;
                     const segment = segmentRings.find(s => s.hitbox === hoveredHitbox);
                     if (segment) {
                         segment.hovered = true;
-                        segment.mesh.material.emissiveIntensity = 2.0; // Strong glow
+                        segment.mesh.material.emissiveIntensity = 2.0;
                         segment.mesh.material.opacity = 1.0;
                     }
                 }
@@ -496,308 +370,152 @@
             const positions = torusGeometry.attributes.position;
             const vertex = new THREE.Vector3();
             
-            // Handle simple trefoil to torus deformation
-            if (isTransitioning && !isTorus) {
-                const progress = Math.min(transitionProgress / 1.5, 1.0);
-                const easedProgress = smoothstep(progress);
+            // Normal trefoil state with effects
+            for (let i = 0; i < positions.count; i++) {
+                const i3 = i * 3;
                 
-                const verticesPerRing = RADIAL_SEGMENTS + 1;
+                // Start with original vertex position
+                const originalVertex = new THREE.Vector3(
+                    originalPositions[i3],
+                    originalPositions[i3 + 1],
+                    originalPositions[i3 + 2]
+                );
                 
-                // Simple interpolation from trefoil to torus
-                for (let tubularIndex = 0; tubularIndex <= TUBULAR_SEGMENTS; tubularIndex++) {
-                    const u = tubularIndex / TUBULAR_SEGMENTS;
+                // Apply subtle turbulence
+                const turbulence = 
+                    Math.sin(originalVertex.x * turbulenceScale + time * turbulenceSpeed) * 
+                    Math.cos(originalVertex.y * turbulenceScale + time * turbulenceSpeed * 0.7) * 
+                    Math.sin(originalVertex.z * turbulenceScale + time * turbulenceSpeed * 0.5);
+                
+                const displacement = originalVertex.clone().normalize().multiplyScalar(turbulence * turbulenceAmplitude);
+                vertex.copy(originalVertex).add(displacement);
+                
+                // Apply Brownian motion
+                if (BROWNIAN_INTENSITY > 0) {
+                    brownianOffsets[i3] += (Math.random() - 0.5) * BROWNIAN_INTENSITY;
+                    brownianOffsets[i3 + 1] += (Math.random() - 0.5) * BROWNIAN_INTENSITY;
+                    brownianOffsets[i3 + 2] += (Math.random() - 0.5) * BROWNIAN_INTENSITY;
                     
-                    // Get trefoil point
-                    const trefoilPt = getTrefoilPoint(u);
-                    const nextTrefoilPt = getTrefoilPoint((u + 0.01) % 1.0);
+                    const damping = 0.95;
+                    brownianOffsets[i3] *= damping;
+                    brownianOffsets[i3 + 1] *= damping;
+                    brownianOffsets[i3 + 2] *= damping;
                     
-                    for (let radialIndex = 0; radialIndex <= RADIAL_SEGMENTS; radialIndex++) {
-                        const v = radialIndex / RADIAL_SEGMENTS;
-                        const vertexIndex = tubularIndex * verticesPerRing + radialIndex;
-                        const baseIndex = vertexIndex * 3;
+                    vertex.x += brownianOffsets[i3];
+                    vertex.y += brownianOffsets[i3 + 1];
+                    vertex.z += brownianOffsets[i3 + 2];
+                }
+                
+                // Gravitational pull towards mouse
+                if (isMouseActive) {
+                    const worldVertex = vertex.clone().applyMatrix4(torus.matrixWorld);
+                    const distance = worldVertex.distanceTo(mousePosition3D);
+                    
+                    if (distance < gravitationalRadius) {
+                        const falloff = 1 - (distance / gravitationalRadius);
+                        const pullStrength = GRAVITATIONAL_STRENGTH * falloff * falloff;
                         
-                        if (baseIndex >= positions.count * 3) continue;
+                        const direction = new THREE.Vector3()
+                            .subVectors(mousePosition3D, worldVertex)
+                            .normalize();
                         
-                        // Calculate trefoil position for this vertex
-                        const { normal, binormal } = calculateFrame(trefoilPt, nextTrefoilPt);
-                        const tubeAngle = v * Math.PI * 2;
-                        const radius = 0.3;
-                        const cos_v = Math.cos(tubeAngle);
-                        const sin_v = Math.sin(tubeAngle);
+                        const inverseMatrix = new THREE.Matrix4().copy(torus.matrixWorld).invert();
+                        direction.applyMatrix4(inverseMatrix).normalize();
                         
-                        const trefoilVertex = {
-                            x: trefoilPt.x + radius * (cos_v * normal.x + sin_v * binormal.x),
-                            y: trefoilPt.y + radius * (cos_v * normal.y + sin_v * binormal.y),
-                            z: trefoilPt.z + radius * (cos_v * normal.z + sin_v * binormal.z)
-                        };
-                        
-                        // Get torus point for this vertex
-                        const torusPt = getTorusPoint(u, v, 1.5, 0.3);
-                        
-                        // Interpolate between trefoil and torus
-                        positions.array[baseIndex] = trefoilVertex.x * (1 - easedProgress) + torusPt.x * easedProgress;
-                        positions.array[baseIndex + 1] = trefoilVertex.y * (1 - easedProgress) + torusPt.y * easedProgress;
-                        positions.array[baseIndex + 2] = trefoilVertex.z * (1 - easedProgress) + torusPt.z * easedProgress;
+                        vertex.add(direction.multiplyScalar(pullStrength));
                     }
                 }
                 
-                positions.needsUpdate = true;
-                torusGeometry.computeVertexNormals();
-                
-                // Update segment rings to stay affixed to the surface during transition
-                segmentRings.forEach(segment => {
-                    const tubularIndex = segment.tubularIndex;
-                    const verticesPerSegment = RADIAL_SEGMENTS + 1;
-                    const u = tubularIndex / TUBULAR_SEGMENTS;
-                    
-                    // Calculate center position from deformed vertices
-                    let centerX = 0, centerY = 0, centerZ = 0;
-                    for (let r = 0; r < RADIAL_SEGMENTS; r++) {
-                        const vertexIndex = tubularIndex * verticesPerSegment + r;
-                        const i3 = vertexIndex * 3;
-                        
-                        if (i3 < positions.count * 3) {
-                            centerX += positions.array[i3];
-                            centerY += positions.array[i3 + 1];
-                            centerZ += positions.array[i3 + 2];
-                        }
-                    }
-                    centerX /= RADIAL_SEGMENTS;
-                    centerY /= RADIAL_SEGMENTS;
-                    centerZ /= RADIAL_SEGMENTS;
-                    
-                    // Update ring position to match deformed center
-                    const deformedCenter = new THREE.Vector3(centerX, centerY, centerZ);
-                    deformedCenter.applyMatrix4(torus.matrixWorld);
-                    segment.mesh.position.copy(deformedCenter);
-                    segment.hitbox.position.copy(deformedCenter);
-                    
-                    // Calculate orientation based on interpolated tangent
-                    const trefoilPt = getTrefoilPoint(u);
-                    const nextTrefoilPt = getTrefoilPoint((u + 0.01) % 1.0);
-                    const trefoilTangent = {
-                        x: nextTrefoilPt.x - trefoilPt.x,
-                        y: nextTrefoilPt.y - trefoilPt.y,
-                        z: nextTrefoilPt.z - trefoilPt.z
-                    };
-                    
-                    const torusAngle = u * Math.PI * 2;
-                    const torusTangent = {
-                        x: -1.5 * Math.sin(torusAngle),
-                        y: 1.5 * Math.cos(torusAngle),
-                        z: 0
-                    };
-                    
-                    // Interpolate tangent direction
-                    const blendedTangent = new THREE.Vector3(
-                        trefoilTangent.x * (1 - easedProgress) + torusTangent.x * easedProgress,
-                        trefoilTangent.y * (1 - easedProgress) + torusTangent.y * easedProgress,
-                        trefoilTangent.z * (1 - easedProgress) + torusTangent.z * easedProgress
-                    ).normalize();
-                    
-                    const axis = new THREE.Vector3(0, 0, 1);
-                    const rotatedTangent = blendedTangent.clone().applyQuaternion(torus.quaternion);
-                    segment.mesh.quaternion.setFromUnitVectors(axis, rotatedTangent);
-                    segment.hitbox.quaternion.copy(segment.mesh.quaternion);
-                });
-                
-            } else if (isTorus) {
-                // Perfect torus state
-                const verticesPerRing = RADIAL_SEGMENTS + 1;
-                
-                for (let tubularIndex = 0; tubularIndex <= TUBULAR_SEGMENTS; tubularIndex++) {
-                    const u = tubularIndex / TUBULAR_SEGMENTS;
-                    
-                    for (let radialIndex = 0; radialIndex <= RADIAL_SEGMENTS; radialIndex++) {
-                        const v = radialIndex / RADIAL_SEGMENTS;
-                        const vertexIndex = tubularIndex * verticesPerRing + radialIndex;
-                        const baseIndex = vertexIndex * 3;
-                        
-                        if (baseIndex >= positions.count * 3) continue;
-                        
-                        // Get torus point
-                        const torusPt = getTorusPoint(u, v, 1.5, 0.3);
-                        
-                        positions.array[baseIndex] = torusPt.x;
-                        positions.array[baseIndex + 1] = torusPt.y;
-                        positions.array[baseIndex + 2] = torusPt.z;
-                    }
-                }
-                
-                positions.needsUpdate = true;
-                
-            } else {
-                // Normal trefoil state with effects
-                for (let i = 0; i < positions.count; i++) {
-                    const i3 = i * 3;
-                    
-                    // Start with original vertex position
-                    const originalVertex = new THREE.Vector3(
-                        originalPositions[i3],
-                        originalPositions[i3 + 1],
-                        originalPositions[i3 + 2]
-                    );
-                    
-                    // Apply subtle turbulence using 3D noise-like pattern
-                    // Create layered sine waves for organic turbulence effect
-                    const turbulence = 
-                        Math.sin(originalVertex.x * turbulenceScale + time * turbulenceSpeed) * 
-                        Math.cos(originalVertex.y * turbulenceScale + time * turbulenceSpeed * 0.7) * 
-                        Math.sin(originalVertex.z * turbulenceScale + time * turbulenceSpeed * 0.5);
-                    
-                    // Apply turbulence as small radial displacement
-                    const displacement = originalVertex.clone().normalize().multiplyScalar(turbulence * turbulenceAmplitude);
-                    vertex.copy(originalVertex).add(displacement);
-                    
-                    // Apply Brownian motion (random walk)
-                    if (BROWNIAN_INTENSITY > 0) {
-                        // Update Brownian offsets with random walk (small random steps)
-                        brownianOffsets[i3] += (Math.random() - 0.5) * BROWNIAN_INTENSITY;
-                        brownianOffsets[i3 + 1] += (Math.random() - 0.5) * BROWNIAN_INTENSITY;
-                        brownianOffsets[i3 + 2] += (Math.random() - 0.5) * BROWNIAN_INTENSITY;
-                        
-                        // Apply damping to prevent offsets from growing too large
-                        const damping = 0.95;
-                        brownianOffsets[i3] *= damping;
-                        brownianOffsets[i3 + 1] *= damping;
-                        brownianOffsets[i3 + 2] *= damping;
-                        
-                        // Add Brownian offsets to vertex position
-                        vertex.x += brownianOffsets[i3];
-                        vertex.y += brownianOffsets[i3 + 1];
-                        vertex.z += brownianOffsets[i3 + 2];
-                    }
-                    
-                    // Gravitational pull towards mouse
-                    if (isMouseActive) {
-                        // Transform vertex to world space
-                        const worldVertex = vertex.clone().applyMatrix4(torus.matrixWorld);
-                        const distance = worldVertex.distanceTo(mousePosition3D);
-                        
-                        if (distance < gravitationalRadius) {
-                            // Calculate pull strength (gentle falloff)
-                            const falloff = 1 - (distance / gravitationalRadius);
-                            const pullStrength = GRAVITATIONAL_STRENGTH * falloff * falloff; // Quadratic falloff for smoother effect
-                            
-                            // Direction towards mouse
-                            const direction = new THREE.Vector3()
-                                .subVectors(mousePosition3D, worldVertex)
-                                .normalize();
-                            
-                            // Transform direction back to local space
-                            const inverseMatrix = new THREE.Matrix4().copy(torus.matrixWorld).invert();
-                            direction.applyMatrix4(inverseMatrix).normalize();
-                            
-                            // Apply gentle pull as an offset
-                            vertex.add(direction.multiplyScalar(pullStrength));
-                        }
-                    }
-                    
-                    // Update position
-                    positions.array[i3] = vertex.x;
-                    positions.array[i3 + 1] = vertex.y;
-                    positions.array[i3 + 2] = vertex.z;
-                }
-                
-                // Mark positions as needing update
-                positions.needsUpdate = true;
+                // Update position
+                positions.array[i3] = vertex.x;
+                positions.array[i3 + 1] = vertex.y;
+                positions.array[i3 + 2] = vertex.z;
             }
+            
+            positions.needsUpdate = true;
             
             // Update material color with time
             const hue = (time * 0.1) % 1;
             material.color.setHSL(hue, 1, 0.5);
             material.emissive.setHSL(hue, 1, 0.2);
             
-            // Update segment rings with deformations and contrasting color (only if not in torus mode)
-            if (!isTorus && !isTransitioning) {
-                segmentRings.forEach(segment => {
-                    // Calculate average position from the actual deformed knot vertices
-                    // Get the ring of vertices at this tubular segment
-                    const tubularIndex = segment.tubularIndex;
-                    const verticesPerSegment = RADIAL_SEGMENTS + 1;
+            // Update segment rings
+            segmentRings.forEach(segment => {
+                // Calculate center position from deformed vertices
+                const tubularIndex = segment.tubularIndex;
+                const verticesPerSegment = RADIAL_SEGMENTS + 1;
+                
+                let centerX = 0, centerY = 0, centerZ = 0;
+                for (let r = 0; r < RADIAL_SEGMENTS; r++) {
+                    const vertexIndex = tubularIndex * verticesPerSegment + r;
+                    const i3 = vertexIndex * 3;
                     
-                    // Calculate center position from deformed vertices
-                    let centerX = 0, centerY = 0, centerZ = 0;
-                    for (let r = 0; r < RADIAL_SEGMENTS; r++) {
-                        const vertexIndex = tubularIndex * verticesPerSegment + r;
-                        const i3 = vertexIndex * 3;
-                        
-                        if (i3 < positions.count * 3) {
-                            centerX += positions.array[i3];
-                            centerY += positions.array[i3 + 1];
-                            centerZ += positions.array[i3 + 2];
-                        }
+                    if (i3 < positions.count * 3) {
+                        centerX += positions.array[i3];
+                        centerY += positions.array[i3 + 1];
+                        centerZ += positions.array[i3 + 2];
                     }
-                    centerX /= RADIAL_SEGMENTS;
-                    centerY /= RADIAL_SEGMENTS;
-                    centerZ /= RADIAL_SEGMENTS;
+                }
+                centerX /= RADIAL_SEGMENTS;
+                centerY /= RADIAL_SEGMENTS;
+                centerZ /= RADIAL_SEGMENTS;
+                
+                const deformedCenter = new THREE.Vector3(centerX, centerY, centerZ);
+                deformedCenter.applyMatrix4(torus.matrixWorld);
+                segment.mesh.position.copy(deformedCenter);
+                segment.hitbox.position.copy(deformedCenter);
+                
+                // Update orientation
+                const tangent = trefoilKnot.getTangent(segment.t);
+                const axis = new THREE.Vector3(0, 0, 1);
+                const rotatedTangent = tangent.clone().applyQuaternion(torus.quaternion);
+                segment.mesh.quaternion.setFromUnitVectors(axis, rotatedTangent.normalize());
+                segment.hitbox.quaternion.copy(segment.mesh.quaternion);
+                
+                // Set contrasting color
+                const contrastHue = (hue + 0.5) % 1;
+                segment.mesh.material.color.setHSL(contrastHue, 1, 0.5);
+                segment.mesh.material.emissive.setHSL(contrastHue, 1, segment.hovered ? 0.8 : 0.2);
+                
+                // Apply deformations to ring vertices
+                const ringPositions = segment.geometry.attributes.position;
+                const ringVertex = new THREE.Vector3();
+                
+                for (let i = 0; i < ringPositions.count; i++) {
+                    const i3 = i * 3;
                     
-                    // Update ring position to match deformed center
-                    const deformedCenter = new THREE.Vector3(centerX, centerY, centerZ);
-                    deformedCenter.applyMatrix4(torus.matrixWorld);
-                    segment.mesh.position.copy(deformedCenter);
+                    const originalRingVertex = new THREE.Vector3(
+                        segment.originalPositions[i3],
+                        segment.originalPositions[i3 + 1],
+                        segment.originalPositions[i3 + 2]
+                    );
                     
-                    // Update hitbox position to match ring
-                    segment.hitbox.position.copy(deformedCenter);
+                    const worldPos = originalRingVertex.clone()
+                        .applyMatrix4(segment.mesh.matrixWorld);
                     
-                    // Update orientation to match the curve
-                    const tangent = trefoilKnot.getTangent(segment.t);
-                    const axis = new THREE.Vector3(0, 0, 1);
-                    const rotatedTangent = tangent.clone().applyQuaternion(torus.quaternion);
-                    segment.mesh.quaternion.setFromUnitVectors(axis, rotatedTangent.normalize());
+                    const turbulence = 
+                        Math.sin(worldPos.x * turbulenceScale + time * turbulenceSpeed) * 
+                        Math.cos(worldPos.y * turbulenceScale + time * turbulenceSpeed * 0.7) * 
+                        Math.sin(worldPos.z * turbulenceScale + time * turbulenceSpeed * 0.5);
                     
-                    // Update hitbox orientation to match ring
-                    segment.hitbox.quaternion.copy(segment.mesh.quaternion);
+                    const displacement = originalRingVertex.clone().normalize()
+                        .multiplyScalar(turbulence * turbulenceAmplitude);
+                    ringVertex.copy(originalRingVertex).add(displacement);
                     
-                    // Set contrasting color (opposite hue)
-                    const contrastHue = (hue + 0.5) % 1;
-                    segment.mesh.material.color.setHSL(contrastHue, 1, 0.5);
-                    segment.mesh.material.emissive.setHSL(contrastHue, 1, segment.hovered ? 0.8 : 0.2);
-                    
-                    // Apply deformations from the main knot to the ring vertices
-                    const ringPositions = segment.geometry.attributes.position;
-                    const ringVertex = new THREE.Vector3();
-                    
-                    for (let i = 0; i < ringPositions.count; i++) {
-                        const i3 = i * 3;
-                        
-                        // Start with original ring vertex
-                        const originalRingVertex = new THREE.Vector3(
-                            segment.originalPositions[i3],
-                            segment.originalPositions[i3 + 1],
-                            segment.originalPositions[i3 + 2]
-                        );
-                        
-                        // Sample turbulence at this position (transformed to world space)
-                        const worldPos = originalRingVertex.clone()
-                            .applyMatrix4(segment.mesh.matrixWorld);
-                        
-                        const turbulence = 
-                            Math.sin(worldPos.x * turbulenceScale + time * turbulenceSpeed) * 
-                            Math.cos(worldPos.y * turbulenceScale + time * turbulenceSpeed * 0.7) * 
-                            Math.sin(worldPos.z * turbulenceScale + time * turbulenceSpeed * 0.5);
-                        
-                        const displacement = originalRingVertex.clone().normalize()
-                            .multiplyScalar(turbulence * turbulenceAmplitude);
-                        ringVertex.copy(originalRingVertex).add(displacement);
-                        
-                        // Apply Brownian motion proportional to the main knot
-                        if (BROWNIAN_INTENSITY > 0) {
-                            const brownianScale = 0.5; // Rings have less Brownian than main knot
-                            ringVertex.x += (Math.random() - 0.5) * BROWNIAN_INTENSITY * brownianScale;
-                            ringVertex.y += (Math.random() - 0.5) * BROWNIAN_INTENSITY * brownianScale;
-                            ringVertex.z += (Math.random() - 0.5) * BROWNIAN_INTENSITY * brownianScale;
-                        }
-                        
-                        // Update ring vertex position
-                        ringPositions.array[i3] = ringVertex.x;
-                        ringPositions.array[i3 + 1] = ringVertex.y;
-                        ringPositions.array[i3 + 2] = ringVertex.z;
+                    if (BROWNIAN_INTENSITY > 0) {
+                        const brownianScale = 0.5;
+                        ringVertex.x += (Math.random() - 0.5) * BROWNIAN_INTENSITY * brownianScale;
+                        ringVertex.y += (Math.random() - 0.5) * BROWNIAN_INTENSITY * brownianScale;
+                        ringVertex.z += (Math.random() - 0.5) * BROWNIAN_INTENSITY * brownianScale;
                     }
                     
-                    ringPositions.needsUpdate = true;
-                });
-            }
+                    ringPositions.array[i3] = ringVertex.x;
+                    ringPositions.array[i3 + 1] = ringVertex.y;
+                    ringPositions.array[i3 + 2] = ringVertex.z;
+                }
+                
+                ringPositions.needsUpdate = true;
+            });
             
             renderer.render(scene, camera);
         }
