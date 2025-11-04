@@ -244,6 +244,99 @@
         // TRANSITION FUNCTIONS
         // ============================================
         
+        // Helper: Original trefoil point calculation
+        function trefoilPoint(t) {
+            return {
+                x: (Math.sin(t) + 2 * Math.sin(2 * t)) * 0.8,
+                y: (Math.cos(t) - 2 * Math.cos(2 * t)) * 0.8,
+                z: -Math.sin(3 * t) * 0.8
+            };
+        }
+        
+        // Helper: Calculate tangent at parameter t
+        function calculateTangent(t, phase, phaseProgress, cutParameter) {
+            const dt = 0.001;
+            const current = getPointForPhase(t, phase, phaseProgress, cutParameter);
+            const next = getPointForPhase(t + dt, phase, phaseProgress, cutParameter);
+            
+            const tangent = {
+                x: next.x - current.x,
+                y: next.y - current.y,
+                z: next.z - current.z
+            };
+            
+            const length = Math.sqrt(tangent.x * tangent.x + tangent.y * tangent.y + tangent.z * tangent.z);
+            return {
+                x: tangent.x / length,
+                y: tangent.y / length,
+                z: tangent.z / length
+            };
+        }
+        
+        // Helper: Calculate normal and binormal
+        function calculateFrame(tangent) {
+            let up = { x: 0, y: 0, z: 1 };
+            
+            if (Math.abs(tangent.z) > 0.9) {
+                up = { x: 1, y: 0, z: 0 };
+            }
+            
+            // Binormal via cross product
+            const binormal = {
+                x: tangent.y * up.z - tangent.z * up.y,
+                y: tangent.z * up.x - tangent.x * up.z,
+                z: tangent.x * up.y - tangent.y * up.x
+            };
+            
+            const bLength = Math.sqrt(binormal.x * binormal.x + binormal.y * binormal.y + binormal.z * binormal.z);
+            binormal.x /= bLength;
+            binormal.y /= bLength;
+            binormal.z /= bLength;
+            
+            // Normal via cross product
+            const normal = {
+                x: binormal.y * tangent.z - binormal.z * tangent.y,
+                y: binormal.z * tangent.x - binormal.x * tangent.z,
+                z: binormal.x * tangent.y - binormal.y * tangent.x
+            };
+            
+            return { normal, binormal };
+        }
+        
+        // Helper: Get point based on animation phase
+        function getPointForPhase(t, phase, phaseProgress, cutParameter) {
+            const trefoil = trefoilPoint(t);
+            
+            if (phase === 'opening') {
+                return trefoil;
+            } else if (phase === 'unknotting') {
+                // Unknotting path with elevation
+                const tNorm = (t - cutParameter + 2 * Math.PI) % (2 * Math.PI);
+                const maxElevation = 2.0;
+                const elevation = maxElevation * Math.sin(tNorm / 2) * (1 - phaseProgress);
+                
+                const circleRadius = 1.5;
+                const circle = {
+                    x: circleRadius * Math.cos(t),
+                    y: circleRadius * Math.sin(t),
+                    z: 0
+                };
+                
+                return {
+                    x: trefoil.x * (1 - phaseProgress) + circle.x * phaseProgress,
+                    y: trefoil.y * (1 - phaseProgress) + circle.y * phaseProgress,
+                    z: trefoil.z * (1 - phaseProgress) + circle.z * phaseProgress + elevation
+                };
+            } else { // closing
+                const circleRadius = 1.5;
+                return {
+                    x: circleRadius * Math.cos(t),
+                    y: circleRadius * Math.sin(t),
+                    z: 0
+                };
+            }
+        }
+        
         function startTrefoilToTorusTransition(segmentIndex) {
             isTransitioning = true;
             clickedSegmentIndex = segmentIndex;
@@ -416,22 +509,133 @@
             const positions = torusGeometry.attributes.position;
             const vertex = new THREE.Vector3();
             
-            // Calculate morphing factor during transition
-            let morphFactor = 0;
-            if (isTransitioning) {
-                if (!isTorus) {
-                    // Trefoil to Torus: 0 to 1
-                    morphFactor = Math.min(transitionProgress / 2.0, 1.0);
+            // Handle unknotting transition with proper algorithm
+            if (isTransitioning && !isTorus) {
+                const progress = Math.min(transitionProgress / 3.0, 1.0);
+                const easedProgress = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+                
+                // Determine animation phase
+                let phase, phaseProgress;
+                if (easedProgress <= 0.3) {
+                    phase = 'opening';
+                    phaseProgress = easedProgress / 0.3;
+                } else if (easedProgress <= 0.7) {
+                    phase = 'unknotting';
+                    phaseProgress = (easedProgress - 0.3) / 0.4;
                 } else {
-                    // Torus to Trefoil: 1 to 0
-                    morphFactor = Math.max(1.0 - (transitionProgress / 2.0), 0.0);
+                    phase = 'closing';
+                    phaseProgress = (easedProgress - 0.7) / 0.3;
                 }
+                
+                const cutParameter = (segmentRings[clickedSegmentIndex].tubularIndex / TUBULAR_SEGMENTS) * 2 * Math.PI;
+                const verticesPerRing = RADIAL_SEGMENTS + 1;
+                const clickedTubularIndex = segmentRings[clickedSegmentIndex].tubularIndex;
+                
+                // Update each vertex with unknotting algorithm
+                for (let tubularIndex = 0; tubularIndex <= TUBULAR_SEGMENTS; tubularIndex++) {
+                    let t = (tubularIndex / TUBULAR_SEGMENTS) * 2 * Math.PI;
+                    
+                    // Determine if this section is before or after the cut
+                    const distanceFromCut = Math.min(
+                        Math.abs(tubularIndex - clickedTubularIndex),
+                        Math.abs(tubularIndex - clickedTubularIndex + TUBULAR_SEGMENTS),
+                        Math.abs(tubularIndex - clickedTubularIndex - TUBULAR_SEGMENTS)
+                    );
+                    
+                    const isAfterCut = tubularIndex > clickedTubularIndex;
+                    
+                    // Adjust t for opening/closing phases with larger gap
+                    let tAdjusted = t;
+                    if (phase === 'opening' && isAfterCut) {
+                        const gapSize = 1.5 * phaseProgress; // Increased gap size
+                        tAdjusted = t + gapSize;
+                    } else if (phase === 'unknotting' && isAfterCut) {
+                        const gapSize = 1.5; // Maintain gap during unknotting
+                        tAdjusted = t + gapSize;
+                    } else if (phase === 'closing') {
+                        const gapSize = 1.5 * (1 - phaseProgress);
+                        if (isAfterCut) {
+                            tAdjusted = t + gapSize;
+                        }
+                    }
+                    
+                    // Get centerline point
+                    let centerPoint;
+                    if (phase === 'opening') {
+                        const trefoil = trefoilPoint(t);
+                        
+                        // Create larger separation perpendicular to the cut
+                        const separationDistance = 0.8 * phaseProgress; // Increased from 0.2
+                        const openOffset = {
+                            x: separationDistance * Math.cos(cutParameter),
+                            y: separationDistance * Math.sin(cutParameter),
+                            z: 0.6 * phaseProgress // Increased vertical lift
+                        };
+                        
+                        if (isAfterCut) {
+                            centerPoint = {
+                                x: trefoil.x + openOffset.x,
+                                y: trefoil.y + openOffset.y,
+                                z: trefoil.z + openOffset.z
+                            };
+                        } else {
+                            centerPoint = {
+                                x: trefoil.x - openOffset.x,
+                                y: trefoil.y - openOffset.y,
+                                z: trefoil.z - openOffset.z
+                            };
+                        }
+                    } else {
+                        centerPoint = getPointForPhase(tAdjusted, phase, phaseProgress, cutParameter);
+                    }
+                    
+                    // Calculate frame
+                    const tangent = calculateTangent(tAdjusted, phase, phaseProgress, cutParameter);
+                    const { normal, binormal } = calculateFrame(tangent);
+                    
+                    // Update vertices around this ring
+                    for (let radialIndex = 0; radialIndex <= RADIAL_SEGMENTS; radialIndex++) {
+                        const vertexIndex = tubularIndex * verticesPerRing + radialIndex;
+                        const baseIndex = vertexIndex * 3;
+                        
+                        if (baseIndex >= positions.count * 3) continue;
+                        
+                        const v = (radialIndex / RADIAL_SEGMENTS) * 2 * Math.PI;
+                        const radius = 0.3; // Maintain tube radius
+                        
+                        const cos_v = Math.cos(v);
+                        const sin_v = Math.sin(v);
+                        
+                        positions.array[baseIndex] = centerPoint.x + radius * (cos_v * normal.x + sin_v * binormal.x);
+                        positions.array[baseIndex + 1] = centerPoint.y + radius * (cos_v * normal.y + sin_v * binormal.y);
+                        positions.array[baseIndex + 2] = centerPoint.z + radius * (cos_v * normal.z + sin_v * binormal.z);
+                    }
+                }
+                
+                positions.needsUpdate = true;
+                torusGeometry.computeVertexNormals();
+                
             } else if (isTorus) {
-                morphFactor = 1.0;
-            }
-            
-            // First pass: Update main knot vertices
-            for (let i = 0; i < positions.count; i++) {
+                // Static torus state
+                for (let i = 0; i < positions.count; i++) {
+                    const i3 = i * 3;
+                    const angle = (i / positions.count) * Math.PI * 2;
+                    const torusRadius = 1.5;
+                    const tubeRadius = 0.3;
+                    
+                    const torusX = (torusRadius + tubeRadius * Math.cos(angle * RADIAL_SEGMENTS)) * Math.cos(angle * TUBULAR_SEGMENTS);
+                    const torusY = (torusRadius + tubeRadius * Math.cos(angle * RADIAL_SEGMENTS)) * Math.sin(angle * TUBULAR_SEGMENTS);
+                    const torusZ = tubeRadius * Math.sin(angle * RADIAL_SEGMENTS);
+                    
+                    positions.array[i3] = torusX;
+                    positions.array[i3 + 1] = torusY;
+                    positions.array[i3 + 2] = torusZ;
+                }
+                positions.needsUpdate = true;
+                
+            } else {
+                // Normal trefoil state with effects
+                for (let i = 0; i < positions.count; i++) {
                 const i3 = i * 3;
                 
                 // Start with original vertex position
@@ -452,26 +656,8 @@
                 const displacement = originalVertex.clone().normalize().multiplyScalar(turbulence * turbulenceAmplitude);
                 vertex.copy(originalVertex).add(displacement);
                 
-                // Apply morphing if in transition or in torus state
-                if (morphFactor > 0) {
-                    // Calculate simple torus position for this vertex
-                    // Map the trefoil tube to a simple torus
-                    const angle = (i / positions.count) * Math.PI * 2;
-                    const torusRadius = 1.5;
-                    const tubeRadius = 0.3;
-                    
-                    const torusX = (torusRadius + tubeRadius * Math.cos(angle * RADIAL_SEGMENTS)) * Math.cos(angle * TUBULAR_SEGMENTS);
-                    const torusY = (torusRadius + tubeRadius * Math.cos(angle * RADIAL_SEGMENTS)) * Math.sin(angle * TUBULAR_SEGMENTS);
-                    const torusZ = tubeRadius * Math.sin(angle * RADIAL_SEGMENTS);
-                    
-                    const torusVertex = new THREE.Vector3(torusX, torusY, torusZ);
-                    
-                    // Interpolate between trefoil and torus
-                    vertex.lerp(torusVertex, morphFactor);
-                }
-                
                 // Apply Brownian motion (random walk)
-                if (BROWNIAN_INTENSITY > 0 && !isTransitioning) {
+                if (BROWNIAN_INTENSITY > 0) {
                     // Update Brownian offsets with random walk (small random steps)
                     brownianOffsets[i3] += (Math.random() - 0.5) * BROWNIAN_INTENSITY;
                     brownianOffsets[i3 + 1] += (Math.random() - 0.5) * BROWNIAN_INTENSITY;
@@ -518,10 +704,11 @@
                 positions.array[i3] = vertex.x;
                 positions.array[i3 + 1] = vertex.y;
                 positions.array[i3 + 2] = vertex.z;
+                }
+                
+                // Mark positions as needing update
+                positions.needsUpdate = true;
             }
-            
-            // Mark positions as needing update
-            positions.needsUpdate = true;
             
             // Update material color with time
             const hue = (time * 0.1) % 1;
