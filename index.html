@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intentionality - Triangulated Torus</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            font-family: 'Arial', sans-serif;
+        }
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="info"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x0a0a0a, 1);
+        document.body.appendChild(renderer.domElement);
+        
+        camera.position.z = 5;
+        
+        // ============================================
+        // TRIANGULATION DENSITY CONTROL
+        // ============================================
+        // Adjust these to control mesh detail
+        // Higher values = more triangles = smoother surface
+        const RADIAL_SEGMENTS = 25;  // Segments around the tube
+        const TUBULAR_SEGMENTS = 32; // Segments around the main ring
+        // ============================================
+        
+        // Create triangulated torus geometry
+        const torusGeometry = new THREE.TorusGeometry(1.5, 0.6, RADIAL_SEGMENTS, TUBULAR_SEGMENTS);
+        
+        // Store original positions for resetting
+        const originalPositions = torusGeometry.attributes.position.array.slice();
+        
+        // Create material with wireframe
+        const material = new THREE.MeshPhongMaterial({
+            color: 0x00ffff,
+            wireframe: true,
+            emissive: 0x003333,
+            shininess: 100
+        });
+        
+        const torus = new THREE.Mesh(torusGeometry, material);
+        scene.add(torus);
+        
+        // Add lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        scene.add(ambientLight);
+        
+        const pointLight = new THREE.PointLight(0xffffff, 1, 100);
+        pointLight.position.set(5, 5, 5);
+        scene.add(pointLight);
+        
+        const pointLight2 = new THREE.PointLight(0xff00ff, 0.5, 100);
+        pointLight2.position.set(-5, -5, 5);
+        scene.add(pointLight2);
+        
+        // Mouse tracking
+        const mouse = new THREE.Vector2();
+        const raycaster = new THREE.Raycaster();
+        let mousePosition3D = new THREE.Vector3();
+        let isMouseActive = false;
+        
+        // Track mouse movement
+        document.addEventListener('mousemove', (event) => {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            isMouseActive = true;
+            
+            // Project mouse position into 3D space
+            raycaster.setFromCamera(mouse, camera);
+            const distance = 5; // Distance from camera
+            mousePosition3D = raycaster.ray.origin.clone().add(
+                raycaster.ray.direction.multiplyScalar(distance)
+            );
+        });
+        
+        document.addEventListener('mouseleave', () => {
+            isMouseActive = false;
+        });
+        
+        // ============================================
+        // GRAVITATIONAL ATTRACTION CONTROL
+        // ============================================
+        // Adjust this value to control mouse attraction strength
+        // Higher values = stronger attraction (try values between 0.05 and 0.5)
+        // Lower values = weaker attraction
+        // Set to 0 to disable mouse attraction
+        const GRAVITATIONAL_STRENGTH = 0.2;
+        // ============================================
+        
+        // Animation variables
+        let time = 0;
+        const gravitationalRadius = 3;
+        const returnSpeed = 0.05;
+        
+        // Turbulence animation settings
+        const turbulenceSpeed = 1;      // Speed of turbulence animation
+        const turbulenceScale = 1;      // Scale of turbulence patterns
+        const turbulenceAmplitude = 0.1; // Intensity of turbulence (very subtle)
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            time += 0.01;
+            
+            // Rotate torus gently (commented out to keep torus fixed)
+            // torus.rotation.x += 0.003;
+            // torus.rotation.y += 0.005;
+            
+            // Get position attribute
+            const positions = torusGeometry.attributes.position;
+            const vertex = new THREE.Vector3();
+            
+            // Update each vertex
+            for (let i = 0; i < positions.count; i++) {
+                const i3 = i * 3;
+                
+                // Start with original vertex position
+                const originalVertex = new THREE.Vector3(
+                    originalPositions[i3],
+                    originalPositions[i3 + 1],
+                    originalPositions[i3 + 2]
+                );
+                
+                // Apply subtle turbulence using 3D noise-like pattern
+                // Create layered sine waves for organic turbulence effect
+                const turbulence = 
+                    Math.sin(originalVertex.x * turbulenceScale + time * turbulenceSpeed) * 
+                    Math.cos(originalVertex.y * turbulenceScale + time * turbulenceSpeed * 0.7) * 
+                    Math.sin(originalVertex.z * turbulenceScale + time * turbulenceSpeed * 0.5);
+                
+                // Apply turbulence as small radial displacement
+                const displacement = originalVertex.clone().normalize().multiplyScalar(turbulence * turbulenceAmplitude);
+                vertex.copy(originalVertex).add(displacement);
+                
+                // Gravitational pull towards mouse
+                if (isMouseActive) {
+                    // Transform vertex to world space
+                    const worldVertex = vertex.clone().applyMatrix4(torus.matrixWorld);
+                    const distance = worldVertex.distanceTo(mousePosition3D);
+                    
+                    if (distance < gravitationalRadius) {
+                        // Calculate pull strength (gentle falloff)
+                        const falloff = 1 - (distance / gravitationalRadius);
+                        const pullStrength = GRAVITATIONAL_STRENGTH * falloff * falloff; // Quadratic falloff for smoother effect
+                        
+                        // Direction towards mouse
+                        const direction = new THREE.Vector3()
+                            .subVectors(mousePosition3D, worldVertex)
+                            .normalize();
+                        
+                        // Transform direction back to local space
+                        const inverseMatrix = new THREE.Matrix4().copy(torus.matrixWorld).invert();
+                        direction.applyMatrix4(inverseMatrix).normalize();
+                        
+                        // Apply gentle pull as an offset
+                        vertex.add(direction.multiplyScalar(pullStrength));
+                    }
+                }
+                
+                // Update position
+                positions.array[i3] = vertex.x;
+                positions.array[i3 + 1] = vertex.y;
+                positions.array[i3 + 2] = vertex.z;
+            }
+            
+            // Mark positions as needing update
+            positions.needsUpdate = true;
+            
+            // Update material color with time
+            const hue = (time * 0.1) % 1;
+            material.color.setHSL(hue, 1, 0.5);
+            material.emissive.setHSL(hue, 1, 0.2);
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>
