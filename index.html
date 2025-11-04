@@ -162,6 +162,13 @@
         let previousMousePosition = { x: 0, y: 0 };
         let manualRotation = false;
         
+        // Animation state management
+        let isTransitioning = false;
+        let isTorus = false;
+        let transitionProgress = 0;
+        let clickedSegmentIndex = -1;
+        let windowElement = null;
+        
         // Mouse down - start dragging
         document.addEventListener('mousedown', (event) => {
             isDragging = true;
@@ -171,9 +178,32 @@
             };
         });
         
-        // Mouse up - stop dragging
-        document.addEventListener('mouseup', () => {
+        // Mouse up - stop dragging (or handle click on segment)
+        document.addEventListener('mouseup', (event) => {
+            if (!isDragging) return;
+            
+            const wasDragging = Math.abs(event.clientX - previousMousePosition.x) > 5 || 
+                               Math.abs(event.clientY - previousMousePosition.y) > 5;
+            
             isDragging = false;
+            
+            // Check if this was a click (not a drag) on a segment
+            if (!wasDragging && !isTransitioning) {
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(segmentRings.map(s => s.hitbox));
+                
+                if (intersects.length > 0) {
+                    const hoveredHitbox = intersects[0].object;
+                    const segmentIndex = segmentRings.findIndex(s => s.hitbox === hoveredHitbox);
+                    
+                    if (segmentIndex !== -1) {
+                        // Clicked on a segment!
+                        if (!isTorus) {
+                            startTrefoilToTorusTransition(segmentIndex);
+                        }
+                    }
+                }
+            }
         });
         
         // Track mouse movement
@@ -209,6 +239,94 @@
         document.addEventListener('mouseleave', () => {
             isMouseActive = false;
         });
+        
+        // ============================================
+        // TRANSITION FUNCTIONS
+        // ============================================
+        
+        function startTrefoilToTorusTransition(segmentIndex) {
+            isTransitioning = true;
+            clickedSegmentIndex = segmentIndex;
+            transitionProgress = 0;
+            
+            // Hide all rings
+            segmentRings.forEach(segment => {
+                segment.mesh.visible = false;
+                segment.hitbox.visible = false;
+            });
+        }
+        
+        function startTorusToTrefoilTransition() {
+            if (windowElement) {
+                document.body.removeChild(windowElement);
+                windowElement = null;
+            }
+            
+            // Immediately return to trefoil state
+            isTransitioning = false;
+            isTorus = false;
+            transitionProgress = 0;
+            
+            // Show all rings again immediately
+            segmentRings.forEach(segment => {
+                segment.mesh.visible = true;
+                segment.hitbox.visible = true;
+            });
+        }
+        
+        function createContentWindow() {
+            // Create iframe window
+            windowElement = document.createElement('div');
+            windowElement.style.position = 'fixed';
+            windowElement.style.left = '50%';
+            windowElement.style.top = '50%';
+            windowElement.style.transform = 'translate(-50%, -50%) scale(0)';
+            windowElement.style.width = '80%';
+            windowElement.style.height = '80%';
+            windowElement.style.maxWidth = '1200px';
+            windowElement.style.maxHeight = '800px';
+            windowElement.style.backgroundColor = 'rgba(20, 20, 40, 0.95)';
+            windowElement.style.border = '2px solid rgba(255, 255, 255, 0.3)';
+            windowElement.style.borderRadius = '10px';
+            windowElement.style.boxShadow = '0 10px 40px rgba(0, 0, 0, 0.5)';
+            windowElement.style.zIndex = '1000';
+            windowElement.style.transition = 'transform 0.5s ease-out';
+            windowElement.style.overflow = 'hidden';
+            
+            // Close button
+            const closeButton = document.createElement('button');
+            closeButton.innerHTML = '✕';
+            closeButton.style.position = 'absolute';
+            closeButton.style.top = '10px';
+            closeButton.style.right = '10px';
+            closeButton.style.width = '30px';
+            closeButton.style.height = '30px';
+            closeButton.style.border = 'none';
+            closeButton.style.backgroundColor = 'rgba(255, 50, 50, 0.8)';
+            closeButton.style.color = 'white';
+            closeButton.style.fontSize = '20px';
+            closeButton.style.cursor = 'pointer';
+            closeButton.style.borderRadius = '5px';
+            closeButton.style.zIndex = '1001';
+            closeButton.onclick = () => startTorusToTrefoilTransition();
+            
+            // Iframe
+            const iframe = document.createElement('iframe');
+            iframe.src = 'test.html';
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.border = 'none';
+            iframe.style.borderRadius = '10px';
+            
+            windowElement.appendChild(closeButton);
+            windowElement.appendChild(iframe);
+            document.body.appendChild(windowElement);
+            
+            // Animate in
+            setTimeout(() => {
+                windowElement.style.transform = 'translate(-50%, -50%) scale(1)';
+            }, 50);
+        }
         
         // ============================================
         // GRAVITATIONAL ATTRACTION CONTROL
@@ -248,14 +366,27 @@
             
             time += 0.01;
             
+            // Handle transition animation
+            if (isTransitioning) {
+                transitionProgress += 0.01;
+                
+                // Only Trefoil to Torus transition (reverse happens instantly)
+                if (transitionProgress >= 3.0) {
+                    // Transition complete
+                    isTransitioning = false;
+                    isTorus = true;
+                    createContentWindow();
+                }
+            }
+            
             // Auto-rotate only if not manually rotated
             if (!manualRotation) {
                 torus.rotation.x += 0.003;
                 torus.rotation.y += 0.005;
             }
             
-            // Check for segment hover (only when not dragging)
-            if (!isDragging && isMouseActive) {
+            // Check for segment hover (only when not dragging and not transitioning)
+            if (!isDragging && isMouseActive && !isTransitioning && !isTorus) {
                 raycaster.setFromCamera(mouse, camera);
                 // Use hitboxes for easier interaction
                 const intersects = raycaster.intersectObjects(segmentRings.map(s => s.hitbox));
@@ -285,6 +416,20 @@
             const positions = torusGeometry.attributes.position;
             const vertex = new THREE.Vector3();
             
+            // Calculate morphing factor during transition
+            let morphFactor = 0;
+            if (isTransitioning) {
+                if (!isTorus) {
+                    // Trefoil to Torus: 0 to 1
+                    morphFactor = Math.min(transitionProgress / 2.0, 1.0);
+                } else {
+                    // Torus to Trefoil: 1 to 0
+                    morphFactor = Math.max(1.0 - (transitionProgress / 2.0), 0.0);
+                }
+            } else if (isTorus) {
+                morphFactor = 1.0;
+            }
+            
             // First pass: Update main knot vertices
             for (let i = 0; i < positions.count; i++) {
                 const i3 = i * 3;
@@ -307,8 +452,26 @@
                 const displacement = originalVertex.clone().normalize().multiplyScalar(turbulence * turbulenceAmplitude);
                 vertex.copy(originalVertex).add(displacement);
                 
+                // Apply morphing if in transition or in torus state
+                if (morphFactor > 0) {
+                    // Calculate simple torus position for this vertex
+                    // Map the trefoil tube to a simple torus
+                    const angle = (i / positions.count) * Math.PI * 2;
+                    const torusRadius = 1.5;
+                    const tubeRadius = 0.3;
+                    
+                    const torusX = (torusRadius + tubeRadius * Math.cos(angle * RADIAL_SEGMENTS)) * Math.cos(angle * TUBULAR_SEGMENTS);
+                    const torusY = (torusRadius + tubeRadius * Math.cos(angle * RADIAL_SEGMENTS)) * Math.sin(angle * TUBULAR_SEGMENTS);
+                    const torusZ = tubeRadius * Math.sin(angle * RADIAL_SEGMENTS);
+                    
+                    const torusVertex = new THREE.Vector3(torusX, torusY, torusZ);
+                    
+                    // Interpolate between trefoil and torus
+                    vertex.lerp(torusVertex, morphFactor);
+                }
+                
                 // Apply Brownian motion (random walk)
-                if (BROWNIAN_INTENSITY > 0) {
+                if (BROWNIAN_INTENSITY > 0 && !isTransitioning) {
                     // Update Brownian offsets with random walk (small random steps)
                     brownianOffsets[i3] += (Math.random() - 0.5) * BROWNIAN_INTENSITY;
                     brownianOffsets[i3 + 1] += (Math.random() - 0.5) * BROWNIAN_INTENSITY;
@@ -365,9 +528,10 @@
             material.color.setHSL(hue, 1, 0.5);
             material.emissive.setHSL(hue, 1, 0.2);
             
-            // Update segment rings with deformations and contrasting color
-            segmentRings.forEach(segment => {
-                // Calculate average position from the actual deformed knot vertices
+            // Update segment rings with deformations and contrasting color (only if not in torus mode)
+            if (!isTorus && !isTransitioning) {
+                segmentRings.forEach(segment => {
+                    // Calculate average position from the actual deformed knot vertices
                 // Get the ring of vertices at this tubular segment
                 const tubularIndex = segment.tubularIndex;
                 const verticesPerSegment = RADIAL_SEGMENTS + 1;
@@ -452,7 +616,8 @@
                 }
                 
                 ringPositions.needsUpdate = true;
-            });
+                });
+            }
             
             renderer.render(scene, camera);
         }
